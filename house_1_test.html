@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>У Илем 4.1 | Проверка house 1</title>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #171b18; color: #f1eee5; }
+    header { padding: 18px 22px; border-bottom: 1px solid #394139; }
+    h1 { margin: 0 0 5px; font-size: 20px; font-weight: 650; }
+    p { margin: 0; color: #bdc5b9; font-size: 14px; }
+    main { width: min(1100px, 100%); margin: auto; padding: 18px; }
+    .stage { position: relative; overflow: hidden; border: 1px solid #465247; border-radius: 14px; background: radial-gradient(ellipse at 50% 42%, #586454, #252d27 68%, #171b18); }
+    model-viewer { width: 100%; height: min(72vh, 720px); min-height: 420px; --poster-color: transparent; }
+    .hint { display: flex; flex-wrap: wrap; gap: 12px 22px; padding: 12px 15px; color: #d2d9ce; font-size: 13px; border-top: 1px solid #465247; }
+    #status { padding: 10px 14px; color: #d6c99e; font-size: 13px; }
+    .error { color: #ffb3a9 !important; }
+    @media(max-width:600px) { main { padding: 10px; } model-viewer { min-height: 360px; height: 65vh; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>У Илем 4.1 · проверка модели дома</h1>
+    <p>Изолированный просмотрщик. Контрольная игровая сборка не изменяется.</p>
+  </header>
+  <main>
+    <section class="stage">
+      <model-viewer id="house" src="./house%201.glb"
+        camera-controls auto-rotate auto-rotate-delay="1800" rotation-per-second="12deg"
+        shadow-intensity="1" exposure="1" environment-image="neutral"
+        interaction-prompt="auto" ar>
+      </model-viewer>
+      <div id="status" role="status">Загрузка house 1.glb…</div>
+    </section>
+    <div class="hint">
+      <span>🖱️ Перетаскивание: вращение</span>
+      <span>Колесо мыши: приближение</span>
+      <span>Shift + перетаскивание: панорама</span>
+    </div>
+  </main>
+  <script>
+    const viewer = document.querySelector('#house');
+    const status = document.querySelector('#status');
+    viewer.addEventListener('load', () => { status.textContent = 'Модель загружена. Проверьте геометрию, масштаб и ориентацию.'; });
+    viewer.addEventListener('error', () => { status.textContent = 'Не удалось загрузить модель. Проверьте доступность house 1.glb и поддержку загрузки модулей браузером.'; status.classList.add('error'); });
+  </script>
+</body>
+</html>
