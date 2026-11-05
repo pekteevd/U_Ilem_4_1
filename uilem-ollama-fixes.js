@@ -1,0 +1,115 @@
+/* U Ilem 4.1: Ollama, safe task completion, lighthouse warehouse marker */
+(function(){
+  const copy = x => JSON.parse(JSON.stringify(x));
+  const oldSave = window.save;
+  window.__uilemSaveOk = true;
+  window.save = function(show){
+    let ok=false;
+    try {
+      oldSave.call(window,false);
+      const data=JSON.parse(localStorage.getItem(SAVE_PREFIX+ACTIVE_SLOT)||'null');
+      ok=!!data && JSON.stringify(data.state)===JSON.stringify(G);
+    } catch(e) { console.error(e); }
+    window.__uilemSaveOk=ok;
+    if(show) toast(ok?'Сохранено в ячейку '+ACTIVE_SLOT:'Ошибка сохранения.');
+    return ok;
+  };
+
+  if(!G.objects.warehouse) G.objects.warehouse={name:'Общий склад у Маяка',state:0,condition:'Планируется рядом с водонапорной башней',cost:45000};
+  const scene=document.getElementById('scene');
+  if(scene&&!scene.querySelector('[data-object="warehouse"]')){
+    const b=document.createElement('button');
+    b.className='hotspot'; b.type='button'; b.dataset.object='warehouse'; b.textContent='📦 Общий склад';
+    b.style.cssText='left:76%;top:33%;background:#65471fee;border:1px solid #d7b77a';
+    b.addEventListener('click',()=>{G.selected='warehouse';render();});
+    scene.appendChild(b);
+  }
+  save();
+
+  window.finishTask=function(id){
+    const t=G.tasks.find(x=>String(x.id)===String(id));
+    if(!t) return toast('Поручение не найдено.');
+    if(t.status==='Выполнена'||t.operationId) return toast('Повторное выполнение запрещено.');
+    if(t.status!=='Запланирована') return toast('Сначала утвердите поручение.');
+    const p=G.people.find(x=>x.name===t.person);
+    if(!p) return toast('Исполнитель не найден.');
+    const hours=Math.max(0,Number(t.hours)||0);
+    if(p.hours<hours) return toast('Недостаточно свободных часов у '+p.name+'.');
+    const needs=(Array.isArray(t.materials)?t.materials:[]).map(x=>Array.isArray(x)?{name:String(x[0]),qty:Number(x[1])||0}:{name:String(x.name||''),qty:Number(x.qty)||0}).filter(x=>x.name&&x.qty>0);
+    const missing=needs.filter(n=>{const s=G.inventory.find(x=>x.name.toLowerCase()===n.name.toLowerCase());return !s||s.qty<n.qty;});
+    if(missing.length) return toast('Не хватает материалов: '+missing.map(x=>x.name).join(', ')+'.');
+    const before=copy(G);
+    try {
+      needs.forEach(n=>{const s=G.inventory.find(x=>x.name.toLowerCase()===n.name.toLowerCase());s.qty=Number((s.qty-n.qty).toFixed(4));s.used=(Number(s.used)||0)+n.qty;});
+      p.hours-=hours; p.energy=Math.max(0,p.energy-Math.ceil(hours*1.5));
+      t.status='Выполнена'; t.doneAt=G.day+'.'+G.month+'.'+G.year; t.completedAt=new Date().toISOString(); t.operationId='task-'+t.id+'-'+t.completedAt;
+      const obj=G.objects[t.object]||G.objects[G.selected]||G.objects.mainHouse;
+      if(obj){obj.state=Math.min(100,(Number(obj.state)||0)+Math.max(5,Math.min(25,Math.round(hours/2))));obj.condition=obj.state>=70?'Рабочее состояние':'Требует дальнейших работ';}
+      log(p.name+' выполнил поручение «'+t.title+'». Потрачено '+hours+' ч.');
+      if(!save()) throw new Error('Сохранение не подтверждено.');
+      render();renderLiveTasks();toast('Поручение выполнено. Материалы списаны, объект обновлён.');
+    } catch(e) { G=before;render();renderLiveTasks();toast('Операция отменена: '+e.message); }
+  };
+
+  const oldExecute=window.executeStage;
+  const locks=new Set();
+  window.executeStage=function(id){
+    const s=G.stages.find(x=>String(x.id)===String(id));
+    if(!s)return toast('Этап не найден.');
+    if(Number(s.progress)>=100||s.operationId)return toast('Этап уже завершён. Повторное списание запрещено.');
+    if(locks.has(String(id)))return;
+    locks.add(String(id));
+    const before=copy(G);
+    try {
+      window.__uilemSaveOk=false;
+      oldExecute.call(window,id);
+      if(Number(s.progress)>=100){
+        if(!window.__uilemSaveOk)throw new Error('Сохранение не подтверждено.');
+        s.completedAt=new Date().toISOString();s.operationId='stage-'+s.id+'-'+s.completedAt;
+        if(!save())throw new Error('Не удалось сохранить этап.');
+        render();
+      }
+    } catch(e) {G=before;save();render();toast('Этап отменён: '+e.message);}
+    finally {locks.delete(String(id));}
+  };
+
+  function parsePlan(raw){
+    let x=String(raw||'').replace(/<think>[\s\S]*?<\/think>/gi,'').trim();
+    x=x.replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'');
+    const a=x.indexOf('{'),b=x.lastIndexOf('}');
+    if(a>=0&&b>a)x=x.slice(a,b+1);
+    return JSON.parse(x);
+  }
+  function fallback(message){
+    const text=message.toLowerCase();let titles;
+    if(/территор|обустрой|участ|сануз|душев/.test(text))titles=['Осмотреть территорию','Определить площадки под хозяйственные объекты','Подготовить список материалов'];
+    else if(/дом|кровл|фундамент|ремонт|стро/.test(text))titles=['Осмотреть конструкции и дефекты','Составить последовательность ремонтных работ','Подготовить ведомость материалов'];
+    else if(/сад|огород|яблон|дерев/.test(text))titles=['Осмотреть сад','Составить сезонный план ухода'];
+    else titles=['Уточнить объём поручения','Подготовить список действий и ресурсов'];
+    return {reply:'Ollama недоступна. Создан предварительный локальный план.',tasks:titles.map((title,i)=>({title,person:pickPerson(message).name,hours:estimateTask(title),object:G.selected||'mainHouse',materials:[],priority:i?'Плановый':'Обычный'}))};
+  }
+  window.sendCommand=async function(){
+    const input=document.getElementById('chatInput'),message=input&&input.value.trim();if(!message)return;
+    input.value='';addChat('Дмитрий',message);
+    const button=document.querySelector('.chatinput button');if(button)button.disabled=true;
+    let plan;
+    try{
+      const r=await fetch('/api/ollama/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,context:{people:G.people.map(p=>({name:p.name,role:p.role,skill:p.skill,hours:p.hours})),objects:Object.entries(G.objects).map(([id,o])=>({id,name:o.name,condition:o.condition})),inventory:G.inventory.map(x=>({name:x.name,qty:x.qty,unit:x.unit})).slice(0,80)}})});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const data=await r.json();plan=parsePlan(data.content);
+    }catch(e){console.warn('Ollama unavailable',e);plan=fallback(message);}
+    finally{if(button)button.disabled=false;}
+    addChat('Команда У Илем',String(plan.reply||'Подготовлен черновик.'),'system');
+    let count=0;
+    for(const item of (Array.isArray(plan.tasks)?plan.tasks.slice(0,8):[])){
+      const title=String(item.title||'').trim().slice(0,180);if(!title)continue;
+      if(G.tasks.some(t=>String(t.title||'').toLowerCase()===title.toLowerCase()&&!['Выполнена','Отклонена'].includes(t.status)))continue;
+      const p=G.people.find(x=>x.name===item.person)||pickPerson(message);
+      const materials=(Array.isArray(item.materials)?item.materials:[]).slice(0,20).map(m=>({name:String(m.name||''),qty:Math.max(0,Number(m.qty)||0),unit:String(m.unit||'шт')})).filter(m=>m.name&&m.qty>0);
+      G.tasks.push({id:Date.now()+count,title,person:p.name,object:G.objects[item.object]?item.object:(G.selected||'mainHouse'),hours:Math.max(.25,Math.min(80,Number(item.hours)||estimateTask(title))),status:'На согласовании',source:message,materials,priority:String(item.priority||'Плановый'),aiGenerated:true});
+      count++;
+    }
+    addChat('У Илем',count?'Создано черновиков: '+count+'. Ничего не выполняется и не списывается без утверждения.':'Новых задач не добавлено.','system');
+    log('Команда разобрала поручение: '+message);save();renderTasks();renderChat();renderLiveTasks();
+  };
+})();
