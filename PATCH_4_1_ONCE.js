@@ -28,6 +28,9 @@ const weatherStart = html.indexOf('<div class="weatherfx" id="weatherFx"></div>'
 if (sceneStart < 0 || weatherStart < 0) throw new Error("Не найдена граница экспериментальной 3D-сцены.");
 html = html.slice(0, sceneStart) + html.slice(weatherStart);
 
+const styleStart = html.indexOf('<style id="ilem-3d-fix-style">');
+const styleEnd = html.indexOf("</style>", styleStart);
+if (styleStart < 0 || styleEnd < 0) throw new Error("Не найден стиль 3D-эксперимента.");
 const nl = String.fromCharCode(10);
 const weatherStyle = '<style id="ilem-weather-style">' + nl +
   '.rain{position:absolute;inset:0;overflow:hidden;pointer-events:none;opacity:.72;background:none!important;background-image:none!important}' + nl +
