@@ -1,11 +1,10 @@
-name: Publish house 1 test page
+name: Publish U Ilem 4.1
 
 on:
   push:
     branches: [main]
     paths:
-      - "house_1_test.html"
-      - "house 1.glb"
+      - "U_Ilem_4_1.html"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -33,11 +32,10 @@ jobs:
         with:
           enablement: true
 
-      - name: Prepare test site
+      - name: Prepare game site
         run: |
           mkdir -p _site
-          cp house_1_test.html _site/index.html
-          cp "house 1.glb" _site/
+          cp U_Ilem_4_1.html _site/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
