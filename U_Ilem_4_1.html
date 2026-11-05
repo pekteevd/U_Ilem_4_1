@@ -385,4 +385,5 @@ window.loadSaveSlot=function(n){const d=readSlot(n);if(!d)return toast('Эта �
 window.startFreshGame=function(){if(!confirm('Начать новую игру в отдельной ячейке? Текущая история останется в своей ячейке, если она сохранена.'))return;const free=[1,2,3].find(n=>!readSlot(n));if(!free&&!confirm('Все три ячейки заняты. Начать новую игру в ячейке 3 и заменить её?'))return;ACTIVE_SLOT=free||3;G=fresh();G=migrateGame(G);save();location.reload()};
 window.resetCurrentSave=function(){if(!confirm(`Полностью сбросить активную ячейку ${ACTIVE_SLOT}? Это действие нельзя отменить.`))return;try{localStorage.removeItem(SAVE_PREFIX+ACTIVE_SLOT);G=migrateGame(fresh());save();location.reload()}catch(e){toast('Не удалось сбросить ячейку')}};
 </script>
+<script src="./uilem-ollama-fixes.js"></script>
 </body></html>
