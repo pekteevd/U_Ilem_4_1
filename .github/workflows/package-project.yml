@@ -1,0 +1,27 @@
+name: Package U Ilem 4.1
+on:
+  push:
+    branches:
+      - work/4-1-water-tower-map
+    paths:
+      - .github/workflows/package-project.yml
+      - uilem-ollama-fixes.js
+      - server.js
+      - start.bat
+      - U_Ilem_4_1.html
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/4-1-water-tower-map
+      - name: Create project archive
+        run: |
+          zip -r U_Ilem_4_1_source.zip . -x ".git/*" ".github/*" "U_Ilem_4_1_source.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: U_Ilem_4_1_source
+          path: U_Ilem_4_1_source.zip
+          retention-days: 7
