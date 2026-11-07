@@ -26,7 +26,15 @@ const SYSTEM=[
 ].join(' ');
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1:'+PORT);
-  if(req.method==='GET'&&url.pathname==='/api/health')return reply(res,200,{ok:true,model:MODEL});
+  if(req.method==='GET'&&url.pathname==='/api/health'){
+    try{
+      const check=await fetch('http://127.0.0.1:11434/api/tags',{signal:AbortSignal.timeout(2500)});
+      const data=await check.json().catch(()=>({}));
+      const models=Array.isArray(data.models)?data.models:[];
+      const installed=models.some(x=>String(x.name||'').split(':')[0]===MODEL.split(':')[0]&&String(x.name||'')===MODEL);
+      return reply(res,200,{ok:true,ollamaConnected:check.ok,modelInstalled:installed,model:MODEL});
+    }catch(e){return reply(res,200,{ok:true,ollamaConnected:false,modelInstalled:false,model:MODEL,error:e.message});}
+  }
   if(req.method==='POST'&&url.pathname==='/api/ollama/chat'){
     try{
       const input=await readBody(req),message=String(input.message||'').trim().slice(0,6000);
