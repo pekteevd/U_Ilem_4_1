@@ -26,30 +26,41 @@
   }
   save();
 
-  window.finishTask=function(id){
+  function executeTaskTransaction(id){
     const t=G.tasks.find(x=>String(x.id)===String(id));
-    if(!t) return toast('Поручение не найдено.');
-    if(t.status==='Выполнена'||t.operationId) return toast('Повторное выполнение запрещено.');
-    if(t.status!=='Запланирована') return toast('Сначала утвердите поручение.');
+    if(!t)return toast('Поручение не найдено.');
+    if(t.status==='Выполнена'||t.operationId)return toast('Повторное выполнение запрещено.');
+    if(t.status!=='Запланирована')return toast('Сначала утвердите поручение.');
+    if(typeof saveReviewFields==='function')saveReviewFields(t);
     const p=G.people.find(x=>x.name===t.person);
-    if(!p) return toast('Исполнитель не найден.');
+    if(!p)return toast('Исполнитель не найден.');
     const hours=Math.max(0,Number(t.hours)||0);
-    if(p.hours<hours) return toast('Недостаточно свободных часов у '+p.name+'.');
-    const needs=(Array.isArray(t.materials)?t.materials:[]).map(x=>Array.isArray(x)?{name:String(x[0]),qty:Number(x[1])||0}:{name:String(x.name||''),qty:Number(x.qty)||0}).filter(x=>x.name&&x.qty>0);
-    const missing=needs.filter(n=>{const s=G.inventory.find(x=>x.name.toLowerCase()===n.name.toLowerCase());return !s||s.qty<n.qty;});
-    if(missing.length) return toast('Не хватает материалов: '+missing.map(x=>x.name).join(', ')+'.');
+    if(p.hours<hours)return toast('Недостаточно свободных часов у '+p.name+'.');
+    const rawNeeds=Array.isArray(t.materials)&&t.materials.length?t.materials:(Array.isArray(t.purchases)?t.purchases:[]);
+    const needs=rawNeeds.map(x=>Array.isArray(x)?{name:String(x[0]),qty:Number(x[1])||0}:{name:String(x.name||''),qty:Number(x.qty)||0}).filter(x=>x.name&&x.qty>0);
+    const missing=needs.filter(n=>{const s=G.inventory.find(x=>x.name.toLowerCase()===n.name.toLowerCase());return !s||Number(s.qty)<n.qty;});
+    if(missing.length)return toast('Не хватает материалов: '+missing.map(x=>x.name+' ('+x.qty+')').join(', ')+'. Сначала пополните склад.');
     const before=copy(G);
-    try {
+    try{
       needs.forEach(n=>{const s=G.inventory.find(x=>x.name.toLowerCase()===n.name.toLowerCase());s.qty=Number((s.qty-n.qty).toFixed(4));s.used=(Number(s.used)||0)+n.qty;});
-      p.hours-=hours; p.energy=Math.max(0,p.energy-Math.ceil(hours*1.5));
-      t.status='Выполнена'; t.doneAt=G.day+'.'+G.month+'.'+G.year; t.completedAt=new Date().toISOString(); t.operationId='task-'+t.id+'-'+t.completedAt;
-      const obj=G.objects[t.object]||G.objects[G.selected]||G.objects.mainHouse;
-      if(obj){obj.state=Math.min(100,(Number(obj.state)||0)+Math.max(5,Math.min(25,Math.round(hours/2))));obj.condition=obj.state>=70?'Рабочее состояние':'Требует дальнейших работ';}
+      p.hours-=hours;p.energy=Math.max(0,p.energy-Math.ceil(hours*1.5));
+      t.status='Выполнена';t.doneAt=G.day+'.'+G.month+'.'+G.year;t.completedAt=new Date().toISOString();t.operationId='task-'+t.id+'-'+t.completedAt;
+      if(Array.isArray(t.actions))t.actions.forEach(a=>a.done=true);
+      const obj=G.objects[t.object];
+      if(obj&&t.effect==='work'){
+        obj.state=Math.min(100,(Number(obj.state)||0)+Math.max(1,Math.min(15,Math.round(hours/4))));
+        obj.condition=obj.state>=70?'Рабочее состояние':'Требует дальнейших работ';
+        const stage=G.stages.find(x=>String(x.id)===String(t.stageId)&&x.object===t.object);
+        if(stage)stage.progress=Math.min(100,(Number(stage.progress)||0)+Math.max(1,Math.round(hours/Math.max(1,Number(stage.hours)||hours)*100)));
+      }
       log(p.name+' выполнил поручение «'+t.title+'». Потрачено '+hours+' ч.');
-      if(!save()) throw new Error('Сохранение не подтверждено.');
-      render();renderLiveTasks();toast('Поручение выполнено. Материалы списаны, объект обновлён.');
-    } catch(e) { G=before;render();renderLiveTasks();toast('Операция отменена: '+e.message); }
-  };
+      if(!save())throw new Error('Сохранение не подтверждено.');
+      render();if(typeof renderLiveTasks==='function')renderLiveTasks();toast('Поручение выполнено. Ресурсы списаны один раз.');
+      if(typeof closeModal==='function')closeModal();
+    }catch(e){G=before;save();render();if(typeof renderLiveTasks==='function')renderLiveTasks();toast('Операция отменена: '+e.message);}
+  }
+  window.ilemExecuteTask=executeTaskTransaction;
+  window.finishTask=executeTaskTransaction;
 
   const oldExecute=window.executeStage;
   const locks=new Set();
@@ -94,7 +105,7 @@
     const button=document.querySelector('.chatinput button');if(button)button.disabled=true;
     let plan;
     try{
-      const r=await fetch('/api/ollama/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,context:{people:G.people.map(p=>({name:p.name,role:p.role,skill:p.skill,hours:p.hours})),objects:Object.entries(G.objects).map(([id,o])=>({id,name:o.name,condition:o.condition})),inventory:G.inventory.map(x=>({name:x.name,qty:x.qty,unit:x.unit})).slice(0,80)}})});
+      const r=await fetch('/api/ollama/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,context:{people:G.people.map(p=>({name:p.name,role:p.role,skill:p.skill,hours:p.hours})),objects:Object.entries(G.objects).map(([id,o])=>({id,name:o.name,condition:o.condition})),stages:G.stages.map(x=>({id:x.id,title:x.title,object:x.object,progress:x.progress,hours:x.hours})),inventory:G.inventory.map(x=>({name:x.name,qty:x.qty,unit:x.unit})).slice(0,80)}})});
       if(!r.ok)throw new Error('HTTP '+r.status);
       const data=await r.json();plan=parsePlan(data.content);
     }catch(e){console.warn('Ollama unavailable',e);plan=fallback(message);}
@@ -106,7 +117,7 @@
       if(G.tasks.some(t=>String(t.title||'').toLowerCase()===title.toLowerCase()&&!['Выполнена','Отклонена'].includes(t.status)))continue;
       const p=G.people.find(x=>x.name===item.person)||pickPerson(message);
       const materials=(Array.isArray(item.materials)?item.materials:[]).slice(0,20).map(m=>({name:String(m.name||''),qty:Math.max(0,Number(m.qty)||0),unit:String(m.unit||'шт')})).filter(m=>m.name&&m.qty>0);
-      G.tasks.push({id:Date.now()+count,title,person:p.name,object:G.objects[item.object]?item.object:(G.selected||'mainHouse'),hours:Math.max(.25,Math.min(80,Number(item.hours)||estimateTask(title))),status:'На согласовании',source:message,materials,priority:String(item.priority||'Плановый'),aiGenerated:true});
+      G.tasks.push({id:Date.now()+count,title,person:p.name,object:G.objects[item.object]?item.object:(G.selected||'mainHouse'),stageId:G.stages.some(s=>String(s.id)===String(item.stageId)&&s.object===(G.objects[item.object]?item.object:(G.selected||'mainHouse')))?item.stageId:null,effect:item.effect==='work'?'work':'inspection',hours:Math.max(.25,Math.min(80,Number(item.hours)||estimateTask(title))),status:'На согласовании',source:message,materials,priority:String(item.priority||'Плановый'),aiGenerated:true});
       count++;
     }
     addChat('У Илем',count?'Создано черновиков: '+count+'. Ничего не выполняется и не списывается без утверждения.':'Новых задач не добавлено.','system');
