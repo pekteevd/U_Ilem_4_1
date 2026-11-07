@@ -62,6 +62,28 @@
   window.ilemExecuteTask=executeTaskTransaction;
   window.finishTask=executeTaskTransaction;
 
+  function commitTaskMutation(id,mutate,successMessage){
+    const t=G.tasks.find(x=>String(x.id)===String(id));if(!t)return toast('Поручение не найдено.');
+    const before=copy(G);
+    try{mutate(t);if(!save())throw new Error('Сохранение не подтверждено.');render();if(typeof renderLiveTasks==='function')renderLiveTasks();if(typeof closeModal==='function')closeModal();if(successMessage)addChat('У Илем',successMessage,'system');}
+    catch(e){G=before;save();render();if(typeof renderLiveTasks==='function')renderLiveTasks();toast('Изменение отменено: '+e.message);}
+  }
+  window.ilemApproveTask=function(id){commitTaskMutation(id,t=>{if(typeof saveReviewFields==='function')saveReviewFields(t);t.status='Запланирована';},'План утверждён. Выполнение и списание ресурсов остаются отдельными действиями.');};
+  window.ilemRejectTask=function(id){commitTaskMutation(id,t=>{t.status='Отклонена';},'Поручение отклонено.');};
+  window.ilemSaveTaskReview=function(id){commitTaskMutation(id,t=>{if(typeof saveReviewFields==='function')saveReviewFields(t);t.object=Object.keys(G.objects).find(k=>G.objects[k].name===document.getElementById('reviewObject')?.value)||t.object;t.reviewedAt=G.day+'.'+G.month+'.'+G.year;},'Разбор поручения сохранён.');};
+  function updateOllamaStatus(){
+    const head=document.querySelector('#taskChat .chatbox h2');if(!head)return;
+    let badge=document.getElementById('ollamaStatus');
+    if(!badge){badge=document.createElement('span');badge.id='ollamaStatus';badge.style.cssText='display:inline-block;margin-left:10px;padding:4px 8px;border-radius:20px;font:11px Arial;background:#8b5e2a;color:#fff';head.appendChild(badge);}
+    badge.textContent='Проверка Ollama…';
+    fetch('/api/health').then(r=>r.json()).then(x=>{
+      badge.textContent=x.ollamaConnected?(x.modelInstalled?'Ollama · '+x.model:'Ollama подключена · нет модели '+x.model):'Ollama не подключена';
+      badge.style.background=x.ollamaConnected&&x.modelInstalled?'#356b43':'#8b5e2a';
+    }).catch(()=>{badge.textContent='Локальный сервер не запущен';badge.style.background='#8b3d35';});
+  }
+  updateOllamaStatus();
+
+
   const oldExecute=window.executeStage;
   const locks=new Set();
   window.executeStage=function(id){
